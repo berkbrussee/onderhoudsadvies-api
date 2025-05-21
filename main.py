@@ -48,11 +48,16 @@ def bepaal_due_onderdelen(kenteken, huidige_km, laatste_onderhoudsdatum):
 def onderhoudsadvies():
     data = request.json
     kenteken = data["kenteken"]
+
+    if data.get("km_per_jaar") is None:
+        return jsonify({"error": "km_per_jaar ontbreekt"}), 400
+
     km_per_jaar = int(data["km_per_jaar"])
     laatste_onderhoud = datetime.strptime(data["laatste_onderhoud"], "%Y-%m-%d")
     type_beurt = data["type_beurt"]
     garagebeleid = data["garagebeleid"]
     leeftijd = int(data["leeftijd_bestuurder"])
+
 
     maanden_sinds = relativedelta(huidige_datum, laatste_onderhoud).months + \
                     12 * (huidige_datum.year - laatste_onderhoud.year)
