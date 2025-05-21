@@ -64,7 +64,7 @@ def onderhoudsadvies():
     if pd.isna(laatste_onderhoud):
         laatste_onderhoud_datum = datetime.now()
     else:
-        laatste_onderhoud_datum = datetime.strptime(laatste_onderhoud, "%Y-%m-%d")
+        laatste_onderhoud_datum = datetime.strptime(laatste_onderhoud.split(" ")[0], "%Y-%m-%d")
 
     due = bepaal_due_onderdelen(kenteken, huidige_km, laatste_onderhoud_datum)
     onderdelen_tekst = "\n".join(due) if due else "Geen onderdelen over hun interval."
