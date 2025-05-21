@@ -5,7 +5,8 @@ from dateutil.relativedelta import relativedelta
 import pandas as pd
 
 app = Flask(__name__)
-client = OpenAI(api_key="")
+import os
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # CSV-bestanden in Replit uploaden via linker sidebar (Uploads)
 df_intervallen = pd.read_csv("onderhoudsintervallen_per_kenteken.csv")
