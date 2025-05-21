@@ -30,7 +30,7 @@ def bepaal_due_onderdelen(kenteken, km_stand_huidig, laatst_onderhoud):
             laatst_vervangen_km = 0
         else:
             laatste = vervangingen.sort_values("Beurtdatum", ascending=False).iloc[0]
-            laatst_vervangen_datum = datetime.strptime(laatste["Beurtdatum"], "%Y-%m-%d")
+            laatst_vervangen_datum = datetime.strptime(laatste["Beurtdatum"].split(" ")[0], "%Y-%m-%d")
             laatst_vervangen_km = int(laatste["Km_stand"])
 
         maanden_geleden = relativedelta(datetime.now(), laatst_vervangen_datum).months + \
