@@ -1,47 +1,46 @@
 from flask import Flask, request, jsonify
-import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import pandas as pd
 import openai
 import os
 
-app = Flask(__name__)
-
-# API-key ophalen uit environment variable
+# Zet je OpenAI key via Render (environment variable)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# CSV-bestanden inlezen
-df_intervallen = pd.read_csv("onderhoudsintervallen_per_kenteken.csv")
-df_historie = pd.read_csv("onderhoudsbeurten_per_kenteken.csv")
+# Laad de onderhoudsdata
+intervalen_df = pd.read_csv("onderhoudsintervallen_per_kenteken.csv")
+historie_df = pd.read_csv("onderhoudsbeurten_per_kenteken.csv")
 
-def bepaal_due_onderdelen(kenteken, huidige_km, huidige_datum):
+app = Flask(__name__)
+
+def bepaal_due_onderdelen(kenteken, km_stand_huidig, laatst_onderhoud):
+    relevant = intervalen_df[intervalen_df["Kenteken"] == kenteken]
+    historie = historie_df[historie_df["Kenteken"] == kenteken]
     opmerkingen = []
-    relevant = df_intervallen[df_intervallen["Kenteken"] == kenteken]
-    historie = df_historie[df_historie["Kenteken"] == kenteken]
 
     for _, row in relevant.iterrows():
         onderdeel = row["Onderdeel"]
         interval_km = row["Interval_km"]
-        interval_maanden = row["Interval_maanden"]
+        interval_mnd = row["Interval_maanden"]
 
-        laatst_vervangen = historie[historie["Vervangen Onderdelen"] == onderdeel]
-
-        if not laatst_vervangen.empty:
-            laatste_entry = laatst_vervangen.sort_values("Beurtdatum", ascending=False).iloc[0]
-            laatste_datum = datetime.strptime(laatste_entry["Beurtdatum"], "%Y-%m-%d")
-            laatste_km = int(laatste_entry["Km_stand"])
+        vervangingen = historie[historie["Vervangen Onderdelen"] == onderdeel]
+        if vervangingen.empty:
+            laatst_vervangen_datum = laatst_onderhoud
+            laatst_vervangen_km = 0
         else:
-            laatste_datum = huidige_datum - relativedelta(months=interval_maanden + 1)
-            laatste_km = 0
+            laatste = vervangingen.sort_values("Beurtdatum", ascending=False).iloc[0]
+            laatst_vervangen_datum = datetime.strptime(laatste["Beurtdatum"], "%Y-%m-%d")
+            laatst_vervangen_km = int(laatste["Km_stand"])
 
-        maanden_geleden = relativedelta(huidige_datum, laatste_datum).months + \
-                          12 * (huidige_datum.year - laatste_datum.year)
-        km_sinds = max(huidige_km - laatste_km, 0)
+        maanden_geleden = relativedelta(datetime.now(), laatst_vervangen_datum).months + \
+                          12 * (datetime.now().year - laatst_vervangen_datum.year)
+        km_geleden = km_stand_huidig - laatst_vervangen_km
 
-        if km_sinds >= interval_km or maanden_geleden >= interval_maanden:
+        if km_geleden >= interval_km or maanden_geleden >= interval_mnd:
             opmerkingen.append(
-                f"{onderdeel}: vervangen {km_sinds} km of {maanden_geleden} maanden geleden, "
-                f"interval is {interval_km} km / {interval_maanden} maanden"
+                f"{onderdeel}: vervangen {km_geleden} km en {maanden_geleden} maanden geleden, "
+                f"interval is {interval_km} km / {interval_mnd} maanden"
             )
 
     return opmerkingen
@@ -49,38 +48,46 @@ def bepaal_due_onderdelen(kenteken, huidige_km, huidige_datum):
 @app.route("/onderhoudsadvies", methods=["POST"])
 def onderhoudsadvies():
     data = request.json
+    kenteken = data.get("kenteken")
+    huidige_km = data.get("huidige_km")
+
+    if not kenteken or not huidige_km:
+        return jsonify({"error": "kenteken of huidige_km ontbreekt"}), 400
+
     try:
-        kenteken = data["kenteken"]
-        huidige_km = int(data["huidige_km"])
-    except (KeyError, ValueError):
-        return jsonify({"error": "Vul een geldig kenteken en kilometerstand in."}), 400
+        km_per_jaar = int(data.get("km_per_jaar", 10000))
+        huidige_km = int(huidige_km)
+    except ValueError:
+        return jsonify({"error": "km-waarden moeten getallen zijn"}), 400
 
-    huidige_datum = datetime.now()
-    due_onderdelen = bepaal_due_onderdelen(kenteken, huidige_km, huidige_datum)
+    laatste_onderhoud = historie_df[historie_df["Kenteken"] == kenteken]["Beurtdatum"].max()
+    if pd.isna(laatste_onderhoud):
+        laatste_onderhoud_datum = datetime.now()
+    else:
+        laatste_onderhoud_datum = datetime.strptime(laatste_onderhoud, "%Y-%m-%d")
 
-    onderdelen_tekst = "\n".join(due_onderdelen) if due_onderdelen else "Geen onderdelen zijn over hun interval."
+    due = bepaal_due_onderdelen(kenteken, huidige_km, laatste_onderhoud_datum)
+    onderdelen_tekst = "\n".join(due) if due else "Geen onderdelen over hun interval."
 
     prompt = (
-        f"De auto met kenteken {kenteken} heeft een huidige kilometerstand van {huidige_km} km.\n"
+        f"Kenteken: {kenteken}\n"
+        f"Laatst onderhoud: {laatste_onderhoud_datum.date()}\n"
+        f"Huidige km-stand: {huidige_km}\n"
         f"Onderhoudscontrole:\n{onderdelen_tekst}\n"
-        f"Welk onderhoud zou je adviseren? Geef 2-3 zinnen gericht advies."
+        f"Welk onderhoud zou je adviseren? Antwoord in 2-3 zinnen."
     )
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0.3
         )
-        advies = response.choices[0].message.content.strip()
+        advies = response["choices"][0]["message"]["content"]
     except Exception as e:
-        return jsonify({"error": f"AI-service fout: {str(e)}"}), 500
+        return jsonify({"error": f"AI-fout: {str(e)}"}), 500
 
-    return jsonify({
-        "kenteken": kenteken,
-        "advies": advies,
-        "onderdelen_check": onderdelen_tekst
-    })
+    return jsonify({"advies": advies})
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=81)
+    app.run(host="0.0.0.0", port=81)
