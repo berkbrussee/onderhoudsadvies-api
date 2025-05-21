@@ -74,7 +74,9 @@ def onderhoudsadvies():
         f"Laatst onderhoud: {laatste_onderhoud_datum.date()}\n"
         f"Huidige km-stand: {huidige_km}\n"
         f"Onderhoudscontrole:\n{onderdelen_tekst}\n"
-        f"Welk onderhoud zou je adviseren? Antwoord in 2-3 zinnen."
+        "Geef een onderhoudsadvies in 2 tot 3 zinnen. "
+        "Wees concreet: benoem welke onderdelen vervangen moeten worden, hoeveel km of maanden het interval is, "
+        "en hoeveel het overschreden is. Begin direct met het advies zonder inleiding."
     )
 
     try:
