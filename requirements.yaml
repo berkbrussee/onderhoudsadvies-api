@@ -1,4 +1,4 @@
 flask
-openai
 pandas
 python-dateutil
+openai==0.28
