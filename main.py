@@ -47,10 +47,10 @@ def bepaal_due_onderdelen(kenteken, huidige_km, laatste_onderhoudsdatum):
 @app.route("/onderhoudsadvies", methods=["POST"])
 def onderhoudsadvies():
     data = request.json
-    kenteken = data["kenteken"]
+    kenteken = data.get("kenteken")
 
-    if data.get("km_per_jaar") is None:
-        return jsonify({"error": "km_per_jaar ontbreekt"}), 400
+    if not data.get("km_per_jaar") or data["km_per_jaar"] in ["null", "None", ""]:
+        return jsonify({"error": "km_per_jaar ontbreekt of is ongeldig"}), 400
 
     km_per_jaar = int(data["km_per_jaar"])
     laatste_onderhoud = datetime.strptime(data["laatste_onderhoud"], "%Y-%m-%d")
